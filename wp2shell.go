@@ -87,7 +87,7 @@ func fetch(client *http.Client, target string) (int, string, string, string) {
 		return 0, "invalid_request", "", err.Error()
 	}
 
-	request.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0")
 
 	response, err := client.Do(request)
 	if err != nil {
