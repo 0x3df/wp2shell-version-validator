@@ -22,6 +22,7 @@ type result struct {
 	URL          string
 	HTTPCode     string
 	HTTPResponse string
+	ResponseBody string
 	Version      string
 	Status       string
 }
@@ -93,7 +94,7 @@ func fetch(client *http.Client, target string) (int, string, string) {
 	}
 	defer response.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return response.StatusCode, response.Status, ""
 	}
@@ -136,7 +137,7 @@ func validateURL(client *http.Client, target string) result {
 	}
 
 	if version == "" {
-		return result{target, fmt.Sprint(httpCode), httpResponse, "unknown", "unknown"}
+		return result{target, fmt.Sprint(httpCode), httpResponse, body, "unknown", "unknown"}
 	}
 
 	status := "safe"
@@ -144,7 +145,7 @@ func validateURL(client *http.Client, target string) result {
 		status = "vulnerable"
 	}
 
-	return result{target, fmt.Sprint(httpCode), httpResponse, version, status}
+	return result{target, fmt.Sprint(httpCode), httpResponse, body, version, status}
 }
 
 func hasURLScheme(value string) bool {
@@ -204,12 +205,12 @@ func writeResults(results []result) error {
 	writer := csv.NewWriter(os.Stdout)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "http_code", "http_response", "wordpress_version", "status"}); err != nil {
+	if err := writer.Write([]string{"url", "http_code", "http_response", "wordpress_version", "status", "response_body"}); err != nil {
 		return err
 	}
 
 	for _, item := range results {
-		if err := writer.Write([]string{item.URL, item.HTTPCode, item.HTTPResponse, item.Version, item.Status}); err != nil {
+		if err := writer.Write([]string{item.URL, item.HTTPCode, item.HTTPResponse, item.Version, item.Status, item.ResponseBody}); err != nil {
 			return err
 		}
 	}
@@ -227,7 +228,7 @@ func writeOutput(path string, results []result) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "version", "affected", "status_code", "http_response"}); err != nil {
+	if err := writer.Write([]string{"url", "version", "affected", "status_code", "http_response", "response_body"}); err != nil {
 		return err
 	}
 
@@ -237,7 +238,7 @@ func writeOutput(path string, results []result) error {
 			affected = "true"
 		}
 
-		if err := writer.Write([]string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse}); err != nil {
+		if err := writer.Write([]string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse, item.ResponseBody}); err != nil {
 			return err
 		}
 	}
@@ -247,7 +248,7 @@ func writeOutput(path string, results []result) error {
 
 func main() {
 	singleURL := flag.String("u", "", "single target URL")
-	output := flag.String("o", "", "write url, version, affected, status_code, and http_response to CSV")
+	output := flag.String("o", "", "write url, version, affected, status_code, http_response, and response_body to CSV")
 	column := flag.String("column", "url", "URL column name for CSV files")
 	timeout := flag.Duration("timeout", 10*time.Second, "HTTP timeout")
 	flag.Parse()
