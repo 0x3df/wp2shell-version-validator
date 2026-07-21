@@ -115,6 +115,14 @@ func extractVersion(body string) string {
 	return ""
 }
 
+func hasWordPressMarkers(body string) bool {
+	body = strings.ToLower(body)
+	return strings.Contains(body, "wp-content") ||
+		strings.Contains(body, "wp-includes") ||
+		strings.Contains(body, "wordpress") ||
+		strings.Contains(body, "/wp-json/")
+}
+
 func feedURL(target string) string {
 	parsed, err := url.Parse(target)
 	if err != nil {
@@ -139,7 +147,11 @@ func validateURL(client *http.Client, target string) result {
 	}
 
 	if version == "" {
-		return result{URL: target, HTTPCode: fmt.Sprint(httpCode), HTTPResponse: httpResponse, RequestError: requestError, ResponseBody: body, Version: "unknown", Status: "unknown"}
+		status := "unknown"
+		if httpCode != 0 && !hasWordPressMarkers(body) {
+			status = "not_wordpress"
+		}
+		return result{URL: target, HTTPCode: fmt.Sprint(httpCode), HTTPResponse: httpResponse, RequestError: requestError, ResponseBody: body, Version: "unknown", Status: status}
 	}
 
 	status := "safe"
@@ -248,7 +260,7 @@ func writeOutput(path string, results []result, includeResponseBody bool) error 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	header := []string{"url", "version", "affected", "status_code", "http_response", "request_error"}
+	header := []string{"url", "version", "affected", "status", "status_code", "http_response", "request_error"}
 	if includeResponseBody {
 		header = append(header, "response_body")
 	}
@@ -263,7 +275,7 @@ func writeOutput(path string, results []result, includeResponseBody bool) error 
 			affected = "true"
 		}
 
-		row := []string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse, item.RequestError}
+		row := []string{item.URL, item.Version, affected, item.Status, item.HTTPCode, item.HTTPResponse, item.RequestError}
 		if includeResponseBody {
 			row = append(row, item.ResponseBody)
 		}
