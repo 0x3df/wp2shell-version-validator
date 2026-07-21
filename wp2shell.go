@@ -276,13 +276,46 @@ func writeOutput(path string, results []result, includeResponseBody bool) error 
 	return writer.Error()
 }
 
+func normalizeArgs(args []string) []string {
+	valueFlags := map[string]bool{
+		"u":       true,
+		"o":       true,
+		"column":  true,
+		"timeout": true,
+	}
+
+	var flags []string
+	var positionals []string
+
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			positionals = append(positionals, arg)
+			continue
+		}
+
+		flags = append(flags, arg)
+		name := strings.TrimLeft(arg, "-")
+		if parts := strings.SplitN(name, "=", 2); len(parts) == 2 {
+			name = parts[0]
+		}
+
+		if valueFlags[name] && !strings.Contains(arg, "=") && index+1 < len(args) {
+			index++
+			flags = append(flags, args[index])
+		}
+	}
+
+	return append(flags, positionals...)
+}
+
 func main() {
 	singleURL := flag.String("u", "", "single target URL")
 	output := flag.String("o", "", "write results to CSV")
 	includeResponseBody := flag.Bool("r", false, "include full HTTP response body in CSV output")
 	column := flag.String("column", "url", "URL column name for CSV files")
 	timeout := flag.Duration("timeout", 10*time.Second, "HTTP timeout")
-	flag.Parse()
+	flag.CommandLine.Parse(normalizeArgs(os.Args[1:]))
 
 	if (*singleURL == "" && flag.NArg() != 1) || (*singleURL != "" && flag.NArg() != 0) {
 		fmt.Fprintln(os.Stderr, "usage: wp2shell -u https://target.example | wp2shell targets.csv")
