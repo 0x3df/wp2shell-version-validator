@@ -19,10 +19,11 @@ var metaGenerator = regexp.MustCompile(`(?i)<meta\s+[^>]*name=["']generator["'][
 var feedGenerator = regexp.MustCompile(`(?i)<generator>https?://wordpress\.org/\?v=([0-9.]+)</generator>`)
 
 type result struct {
-	URL      string
-	HTTPCode string
-	Version  string
-	Status   string
+	URL          string
+	HTTPCode     string
+	HTTPResponse string
+	Version      string
+	Status       string
 }
 
 func versionParts(value string) ([3]int, bool) {
@@ -78,26 +79,26 @@ func isVulnerable(value string) bool {
 	return inRange(current, "6.9.0", "6.9.4") || inRange(current, "7.0.0", "7.0.1")
 }
 
-func fetch(client *http.Client, target string) (int, string) {
+func fetch(client *http.Client, target string) (int, string, string) {
 	request, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
-		return 0, ""
+		return 0, "invalid_request", ""
 	}
 
 	request.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36")
 
 	response, err := client.Do(request)
 	if err != nil {
-		return 0, ""
+		return 0, "request_error", ""
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
 	if err != nil {
-		return response.StatusCode, ""
+		return response.StatusCode, response.Status, ""
 	}
 
-	return response.StatusCode, string(body)
+	return response.StatusCode, response.Status, string(body)
 }
 
 func extractVersion(body string) string {
@@ -126,16 +127,16 @@ func feedURL(target string) string {
 }
 
 func validateURL(client *http.Client, target string) result {
-	httpCode, body := fetch(client, target)
+	httpCode, httpResponse, body := fetch(client, target)
 	version := extractVersion(body)
 
 	if version == "" && httpCode != 0 {
-		_, feedBody := fetch(client, feedURL(target))
+		_, _, feedBody := fetch(client, feedURL(target))
 		version = extractVersion(feedBody)
 	}
 
 	if version == "" {
-		return result{target, fmt.Sprint(httpCode), "unknown", "unknown"}
+		return result{target, fmt.Sprint(httpCode), httpResponse, "unknown", "unknown"}
 	}
 
 	status := "safe"
@@ -143,7 +144,7 @@ func validateURL(client *http.Client, target string) result {
 		status = "vulnerable"
 	}
 
-	return result{target, fmt.Sprint(httpCode), version, status}
+	return result{target, fmt.Sprint(httpCode), httpResponse, version, status}
 }
 
 func hasURLScheme(value string) bool {
@@ -203,12 +204,12 @@ func writeResults(results []result) error {
 	writer := csv.NewWriter(os.Stdout)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "http_code", "wordpress_version", "status"}); err != nil {
+	if err := writer.Write([]string{"url", "http_code", "http_response", "wordpress_version", "status"}); err != nil {
 		return err
 	}
 
 	for _, item := range results {
-		if err := writer.Write([]string{item.URL, item.HTTPCode, item.Version, item.Status}); err != nil {
+		if err := writer.Write([]string{item.URL, item.HTTPCode, item.HTTPResponse, item.Version, item.Status}); err != nil {
 			return err
 		}
 	}
@@ -226,7 +227,7 @@ func writeOutput(path string, results []result) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "version", "affected", "status_code"}); err != nil {
+	if err := writer.Write([]string{"url", "version", "affected", "status_code", "http_response"}); err != nil {
 		return err
 	}
 
@@ -236,7 +237,7 @@ func writeOutput(path string, results []result) error {
 			affected = "true"
 		}
 
-		if err := writer.Write([]string{item.URL, item.Version, affected, item.HTTPCode}); err != nil {
+		if err := writer.Write([]string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse}); err != nil {
 			return err
 		}
 	}
@@ -246,7 +247,7 @@ func writeOutput(path string, results []result) error {
 
 func main() {
 	singleURL := flag.String("u", "", "single target URL")
-	output := flag.String("o", "", "write url, version, affected, and status_code to CSV")
+	output := flag.String("o", "", "write url, version, affected, status_code, and http_response to CSV")
 	column := flag.String("column", "url", "URL column name for CSV files")
 	timeout := flag.Duration("timeout", 10*time.Second, "HTTP timeout")
 	flag.Parse()
