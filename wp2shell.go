@@ -211,16 +211,26 @@ func loadTargets(path string, column string) ([]string, error) {
 	return targets, nil
 }
 
-func writeResults(results []result) error {
+func writeResults(results []result, includeResponseBody bool) error {
 	writer := csv.NewWriter(os.Stdout)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "http_code", "http_response", "request_error", "wordpress_version", "status", "response_body"}); err != nil {
+	header := []string{"url", "http_code", "http_response", "request_error", "wordpress_version", "status"}
+	if includeResponseBody {
+		header = append(header, "response_body")
+	}
+
+	if err := writer.Write(header); err != nil {
 		return err
 	}
 
 	for _, item := range results {
-		if err := writer.Write([]string{item.URL, item.HTTPCode, item.HTTPResponse, item.RequestError, item.Version, item.Status, item.ResponseBody}); err != nil {
+		row := []string{item.URL, item.HTTPCode, item.HTTPResponse, item.RequestError, item.Version, item.Status}
+		if includeResponseBody {
+			row = append(row, item.ResponseBody)
+		}
+
+		if err := writer.Write(row); err != nil {
 			return err
 		}
 	}
@@ -228,7 +238,7 @@ func writeResults(results []result) error {
 	return writer.Error()
 }
 
-func writeOutput(path string, results []result) error {
+func writeOutput(path string, results []result, includeResponseBody bool) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
@@ -238,7 +248,12 @@ func writeOutput(path string, results []result) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"url", "version", "affected", "status_code", "http_response", "request_error", "response_body"}); err != nil {
+	header := []string{"url", "version", "affected", "status_code", "http_response", "request_error"}
+	if includeResponseBody {
+		header = append(header, "response_body")
+	}
+
+	if err := writer.Write(header); err != nil {
 		return err
 	}
 
@@ -248,7 +263,12 @@ func writeOutput(path string, results []result) error {
 			affected = "true"
 		}
 
-		if err := writer.Write([]string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse, item.RequestError, item.ResponseBody}); err != nil {
+		row := []string{item.URL, item.Version, affected, item.HTTPCode, item.HTTPResponse, item.RequestError}
+		if includeResponseBody {
+			row = append(row, item.ResponseBody)
+		}
+
+		if err := writer.Write(row); err != nil {
 			return err
 		}
 	}
@@ -258,7 +278,8 @@ func writeOutput(path string, results []result) error {
 
 func main() {
 	singleURL := flag.String("u", "", "single target URL")
-	output := flag.String("o", "", "write url, version, affected, status_code, http_response, request_error, and response_body to CSV")
+	output := flag.String("o", "", "write results to CSV")
+	includeResponseBody := flag.Bool("r", false, "include full HTTP response body in CSV output")
 	column := flag.String("column", "url", "URL column name for CSV files")
 	timeout := flag.Duration("timeout", 10*time.Second, "HTTP timeout")
 	flag.Parse()
@@ -288,13 +309,13 @@ func main() {
 		results = append(results, validateURL(client, target))
 	}
 
-	if err := writeResults(results); err != nil {
+	if err := writeResults(results, *includeResponseBody); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
 	if *output != "" {
-		if err := writeOutput(*output, results); err != nil {
+		if err := writeOutput(*output, results, *includeResponseBody); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
